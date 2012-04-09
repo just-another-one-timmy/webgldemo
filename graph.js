@@ -3,11 +3,12 @@ var camera;
 var scene;
 var renderer;
 var plane;
-var repulsionCoef = 14;
-var attractionCoef = .000006;
+var repulsionCoef = 500;
+var attractionCoef = 1e-4;
+var deltaT = 0.05;
 var dampingCoef = 0.5;
 var cameraStepSize = 5;
-var minEnergyLevel = 140; 
+var maxIterations = 100, iterations = 0;
 
 document.onkeydown = function(event) {
     switch (String.fromCharCode(event.which).toLowerCase()) {
@@ -27,12 +28,8 @@ var graph = new function() {
     this.edges = [];
 
     var lastLetter = undefined;
-    var kineticEnergy = Number.MAX_VALUE;
-    // Did we reach the min level? If no, we should continue forces calcuation,
-    // even if current level < min energy level
-    // Once we cross this level when system's total energy is decreasing,
-    // forces will no longer affect nodes
-    var reachedMinEneryLevel = false;
+
+    this.animationPhase = 1;
     
     this.getEdge = function(mark) {
         var i, edge;
@@ -87,7 +84,7 @@ var graph = new function() {
                 this.dy = -this.dy;
             }
 
-            if (!graph.shouldStop()) {
+        if (graph.animationPhase == 1) {
                 this.obj.position.x += this.velocity.x;
                 this.obj.position.z += this.velocity.z;
             }
@@ -99,9 +96,10 @@ var graph = new function() {
     };
 
     this.eatLetter = function(letter) {
-
+	letter = letter.toLowerCase();
         if (!(letter >= 'a' && letter <= 'z')) {
             lastLetter = undefined;
+            return;
         }
 
         var node, edge, scalev;
@@ -114,7 +112,7 @@ var graph = new function() {
         node.obj.scale.addScalar(0.2);
 
         if (lastLetter !== undefined) {
-            edge = this.getEdge();
+            edge = this.getEdge(lastLetter + letter);
             if (edge === undefined) {
                 edge = this.createEdge(lastLetter + letter);
             }
@@ -127,6 +125,11 @@ var graph = new function() {
     this.animateNodes = function() {
         for (var i in this.nodes) {
             this.nodes[i].animate();
+        }
+        iterations += 1;
+        console.log(iterations);
+        if (iterations > maxIterations) {
+            this.animationPhase = 2;
         }
     };
 
@@ -150,16 +153,23 @@ var graph = new function() {
         var i, node;
         for (i in this.nodes) {
             node = this.nodes[i];
-            node.velocity.x += node.force.x;
-            node.velocity.z += node.force.z;
+            node.velocity.x += node.force.x * deltaT;
+            node.velocity.z += node.force.z * deltaT;
             node.velocity.multiplyScalar(dampingCoef);
         }
     };
 
     this.calcAttractionForce = function(node1, node2) {
-        var frequency = 0, edge = this.getEdge(node1.mark+node2.mark), pos1 = node1.obj.position, pos2 = node2.obj.position;
-        if (edge !== undefined) {
-            frequency = edge.freq;
+        var frequency = 0,
+        edge1 = this.getEdge(node1.mark+node2.mark),
+        edge2 = this.getEdge(node2.mark+node1.mark),
+        pos1 = node1.obj.position,
+        pos2 = node2.obj.position;
+        if (edge1 !== undefined) {
+            frequency += edge1.freq;
+        }
+        if (edge2 !== undefined) {
+            frequency += edge2.freq;
         }
         return new THREE.Vector3(pos2.x - pos1.x, 0, pos2.z - pos1.z).multiplyScalar(attractionCoef).multiplyScalar(frequency);
     };
@@ -173,41 +183,80 @@ var graph = new function() {
             multiplyScalar(repulsionCoef);
     };
 
-    this.recalculateKineticEnergy = function() {
-        var i;
-        this.kineticEnergy = 0;
-        for (i in this.nodes) {
-            this.kineticEnergy += this.nodes[i].getKineticEnergy();
-        }
-        if (!this.reachedMinEnergyLevel && this.kineticEnergy > minEnergyLevel) {
-            this.reachedMinEnergyLevel = true;
-        }
-    }
+    this.doPhase1Animation = function() {
+        graph.computeForces();
+        graph.applyForces();
+        graph.animateNodes();
+    };
 
-    this.shouldStop = function() {
-        return (this.reachedMinEnergyLevel && this.kineticEnergy < minEnergyLevel);
-    }
+    this.doPhase2Animation = function() {
+        graph.animateNodes();
+    };
     
     this.doAnimation = function(){
-        if (!this.shouldStop()) {
-            graph.computeForces();
-            graph.applyForces();
+        var animationFunction = this.doPhase1Animation;
+        if (this.animationPhase == 2) {
+            animationFunction = this.doPhase2Animation;
         }
-        graph.animateNodes();
-        graph.recalculateKineticEnergy();
+        animationFunction();
     };
+};
+
+var bulletPool = new function() {
+    this.bulletCounter = 0;
+    this.bullets = [];
+
+    var createBullet = function() {
+        var res = {name: this.bulletCounter,
+           obj: make3dBulletMesh()};
+        this.bulletCounter += 1;
+        //res.obj.visible = false;
+        scene.add(res.obj);
+        res.setPosition = function(pos) {
+            res.obj.position = pos;
+        };
+        res.setDestination = function(dest) {
+            res.destination = dest;
+        }
+        res.makeStep = function() {
+            var diff = new THREE.Vector3(this.destination.x - this.obj.position.x,
+                                         0,
+                                         this.destination.z - this.obj.position.z).normalize().multiplyScalar(0.0005);
+            if (diff.lengthSq() < 0) {
+                this.obj.visible = false;
+            } else {
+                this.obj.position.x += diff.x;
+                this.obj.position.z += diff.z;
+            }
+        }
+        return res;
+    }
+    
+    this.getBullet = function() {
+        if (this.bullets.length == 0) {
+            this.bullets.push(createBullet());
+        }
+        var res = this.bullets[this.bullets.length - 1];
+        this.bullets.pop();
+        return res;
+    };
+
+    var make3dBulletMesh = function() {
+        return new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial( {color: 0x0000ff} ));
+    };
+
 };
 
 init();
 animate();
 
 function init() {
-    var msg = "Some english text here. Maybe we can do better... anyway, let's start with that for now!" +
+    var msg = "Some english text here. Maybe we can do better... anyway, let's start with that for now!abab" +
         "abcdefghijklmnopqrstuvwxyz".toLowerCase(), i;
     for (i = 0; i < msg.length; i += 1) {
         graph.eatLetter(msg.charAt(i));
     }
-    
+
     container = document.createElement('div');
     document.body.appendChild(container);
 
@@ -226,6 +275,7 @@ function init() {
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
     camera.position.x = 200;
+    camera.position.y = 400;
     camera.position.z = 500;
     scene.add(camera);
 
