@@ -119,7 +119,6 @@ var graph = new function() {
                 edge = this.createEdge(lastLetter + letter);
             }
             edge.freq += 1;
-            //alert(edge.toSource());
         }
 
         lastLetter = letter;
@@ -183,7 +182,6 @@ var graph = new function() {
         if (!this.reachedMinEnergyLevel && this.kineticEnergy > minEnergyLevel) {
             this.reachedMinEnergyLevel = true;
         }
-        console.log("Current energy = " + this.kineticEnergy);
     }
 
     this.shouldStop = function() {
