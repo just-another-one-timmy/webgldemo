@@ -127,7 +127,6 @@ var graph = new function() {
             this.nodes[i].animate();
         }
         iterations += 1;
-        console.log(iterations);
         if (iterations > maxIterations) {
             this.animationPhase = 2;
         }
