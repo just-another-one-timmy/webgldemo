@@ -7,7 +7,7 @@ var repulsionCoef = 500;
 var attractionCoef = 1e-4;
 var deltaT = 0.05;
 var dampingCoef = 0.5;
-var cameraStepSize = 5;
+var cameraStepSize = 25;
 var maxIterations = 100, iterations = 0;
 
 document.onkeydown = function(event) {
@@ -260,6 +260,8 @@ function init() {
     document.body.appendChild(container);
 
     renderer = new THREE.WebGLRenderer();
+    renderer.shadowMapEnabled = true;
+    renderer.shadowMapSoft    = true;
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
@@ -269,7 +271,9 @@ function init() {
     scene.add(ambientLight);
 
     var directionalLight = new THREE.DirectionalLight(0xffffff);
-    directionalLight.position.set(1, 1, 0.5).normalize();
+    directionalLight.position.set(0.8, 1.5, 0.5).normalize();
+    directionalLight.castShadow = true;
+    directionalLight.shadowDarkness = 1;
     scene.add(directionalLight);
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
@@ -278,14 +282,16 @@ function init() {
     camera.position.z = 500;
     scene.add(camera);
 
-    plane = new THREE.Mesh(new THREE.PlaneGeometry(600, 600, 10, 10), new THREE.MeshLambertMaterial({color: 0xdddddd}));
+    plane = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200, 240, 240), new THREE.MeshLambertMaterial({color: 0xdddddd}));
     plane.rotation.x = - 90 * Math.PI / 180;
     plane.position.y = -40;
+    plane.receiveShadow = true;
     scene.add(plane);
     
     var node;
     for (i in graph.nodes) {
         node = graph.nodes[i];
+        node.obj.castShadow = true;
         scene.add(node.obj);
     }
     
