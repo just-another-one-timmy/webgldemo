@@ -3,6 +3,21 @@ var camera;
 var scene;
 var renderer;
 var cube;
+var repulsionCoef = 20;
+var attractionCoef = .000006;
+var dampingCoef = 0.5;
+var cameraStepSize = 5;
+
+document.onkeydown = function(event) {
+    switch (String.fromCharCode(event.which).toLowerCase()) {
+    case "a": camera.position.x -= cameraStepSize; break;
+    case "d": camera.position.x += cameraStepSize; break;
+    case "w": camera.position.z -= cameraStepSize; break;
+    case "s": camera.position.z += cameraStepSize; break;
+    case "f": camera.position.y -= cameraStepSize; break;
+    case "r": camera.position.y += cameraStepSize; break;
+    }
+}
 
 var graph = new function() {
     // for each letter stores it frequency in the text and 3d object to display
@@ -40,7 +55,7 @@ var graph = new function() {
     };
 
     this.makeMesh3d = function() {
-	var geometry = new THREE.SphereGeometry(10, 16, 16),
+	var geometry = new THREE.SphereGeometry(10, 32, 32),
 	material = new THREE.MeshLambertMaterial({color: Math.random() * 0xffffff});
 	geometry.dynamic = true;
 	var mesh = new THREE.Mesh(geometry, material);
@@ -51,14 +66,21 @@ var graph = new function() {
     };
     
     this.createNode = function(letter) {
-	var node = {mark: letter, freq: 0, obj: this.makeMesh3d()};
+	var node = {mark: letter,
+                    freq: 0,
+                    obj: this.makeMesh3d(),
+                    force: new THREE.Vector3(),
+                    velocity: new THREE.Vector3()
+                   };
 	this.nodes.push(node);
-	node.dy = Math.random()/5;
+	node.dy = Math.random();
 	node.animate = function () {
 	    this.obj.position.y += this.dy;
 	    if (Math.abs(node.obj.position.y) > 10) {
 		this.dy = -this.dy;
 	    }
+            this.obj.position.x += this.velocity.x;
+            this.obj.position.z += this.velocity.z;
 	}
 	
 	return node;
@@ -66,6 +88,11 @@ var graph = new function() {
 
     // 
     this.eatLetter = function(letter) {
+
+	if (!(letter >= 'a' && letter <= 'z')) {
+	    lastLetter = undefined;
+	}
+	
 	var node, edge, scalev;
 
 	node = this.getNode(letter);
@@ -74,7 +101,6 @@ var graph = new function() {
 	}
 	node.freq += 1;
 	node.obj.scale.addScalar(0.2);
-	//alert(node.toSource());
 
 	if (lastLetter !== undefined) {
 	    edge = this.getEdge();
@@ -93,13 +119,59 @@ var graph = new function() {
 	    this.nodes[i].animate();
 	}
     };
+
+    this.computeForces = function() {
+	var i, j, ipos, jpos, dist, diff, attractionForce, repulsionForce;
+	for (i in this.nodes) {
+	    for (j in this.nodes) {
+		if (i !== j) {
+		    ipos = this.nodes[i].obj.position;
+		    jpos = this.nodes[j].obj.position;
+                    attractionForce = this.calcAttractionForce(ipos, jpos);
+                    repulsionForce = this.calcRepulsionForce(ipos, jpos);
+                    this.nodes[i].force.x += attractionForce.x + repulsionForce.x;
+                    this.nodes[i].force.z += attractionForce.z + repulsionForce.z;
+		}
+	    }
+	}
+    };
+
+    this.applyForces = function() {
+	var i, node;
+        for (i in this.nodes) {
+            node = this.nodes[i];
+            node.velocity.x += node.force.x;
+            node.velocity.z += node.force.z;
+            node.velocity.multiplyScalar(dampingCoef);
+        }
+    };
+
+    this.calcAttractionForce = function(pos1, pos2) {
+        return new THREE.Vector3(pos2.x - pos1.x, 0, pos2.z - pos1.z).multiplyScalar(attractionCoef);
+    };
+
+    this.calcRepulsionForce = function(pos1, pos2) {
+        var sqdist = Math.pow(pos1.x - pos2.x, 2) + Math.pow(pos1.z - pos2.z, 2);
+        return new THREE.Vector3(pos1.x - pos2.x, 0, pos1.z - pos2.z).
+            normalize().
+            divideScalar(sqdist).
+            multiplyScalar(repulsionCoef);
+    };
+
+    this.doAnimation = function(){
+        for (var i = 0; i < 10; i++) {
+            graph.computeForces();
+            graph.applyForces();
+        }
+        graph.animateNodes();
+    };
 };
 
 init();
 animate();
 
 function init() {
-    var msg = "aaabbbcbbba", i;
+    var msg = "Some english text here. Maybe we can do better... anyway, let's start with that for now!".toLowerCase(), i;
     for (i = 0; i < msg.length; i += 1) {
 	graph.eatLetter(msg.charAt(i));
     }
@@ -132,8 +204,6 @@ function init() {
 	scene.add(node.obj);
     }
     
-    cube = new THREE.Mesh( new THREE.CubeGeometry(20, 20, 20), new THREE.MeshLambertMaterial({color: 0xff0000}));
-    scene.add(cube);
 }
 
 function animate() {
@@ -142,8 +212,7 @@ function animate() {
 }
 
 function render() {
-    cube.rotation.y += 0.1;
-    graph.animateNodes();
+    graph.doAnimation();
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
 }
