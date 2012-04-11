@@ -8,7 +8,10 @@ var attractionCoef = 1e-4;
 var deltaT = 0.05;
 var dampingCoef = 0.5;
 var cameraStepSize = 25;
-var maxIterations = 100, iterations = 0;
+var maxIterations = 150, iterations = 0;
+var bulletDeltaT = 0.0001;
+var bulletAttractionCoef = 15;
+var bulletEpsilon = 1.5;
 
 document.onkeydown = function (event) {
     switch (String.fromCharCode(event.which).toLowerCase()) {
@@ -80,7 +83,7 @@ var graph = new function () {
         mesh.position.setY((Math.random() - 0.5) * 10);
         return mesh;
     };
-    
+
     this.createNode = function (letter) {
         var node = {mark: letter,
                     freq: 0,
@@ -202,6 +205,22 @@ var graph = new function () {
 
     this.doPhase2Animation = function () {
         graph.animateNodes();
+        var i, j, nodei, nodej, edge, freq;
+        for (i in graph.nodes) {
+            for (j in graph.nodes) {
+                nodei = graph.nodes[i];
+                nodej = graph.nodes[j];
+                edge = graph.getEdge(nodei.mark + nodej.mark);
+                freq = 1;
+                if (edge !== undefined) {
+                    freq = edge.freq;
+                }
+                if ((Math.random() > 0.97) && (freq*Math.random() > 0.95)) {
+                    bulletPool.makeBullet(nodei, nodej);
+                }
+            }
+        }
+        bulletPool.animateBullets();
     };
     
     this.doAnimation = function (){
@@ -209,51 +228,135 @@ var graph = new function () {
         if (this.animationPhase === 2) {
             animationFunction = this.doPhase2Animation;
         }
-        animationFunction ();
+        animationFunction();
     };
 };
 
-var bulletPool = new function () {
-    this.bulletCounter = 0;
-    this.bullets = [];
+var Bullet = function () {
 
-    var createBullet = function () {
-        var res = {name: this.bulletCounter,
-           obj: make3dBulletMesh()};
-        this.bulletCounter += 1;
-        //res.obj.visible = false;
-        scene.add(res.obj);
-        res.setPosition = function (pos) {
-            res.obj.position = pos;
-        };
-        res.setDestination = function (dest) {
-            res.destination = dest;
-        }
-        res.makeStep = function () {
-            var diff = new THREE.Vector3(this.destination.x - this.obj.position.x,
-                                         0,
-                                         this.destination.z - this.obj.position.z).normalize().multiplyScalar(0.0005);
-            if (diff.lengthSq() < 0) {
-                this.obj.visible = false;
-            } else {
-                this.obj.position.x += diff.x;
-                this.obj.position.z += diff.z;
-            }
+    var obj = undefined;
+    var destObj = undefined;
+    var velocity = new THREE.Vector3();
+    var force    = new THREE.Vector3();
+
+    this.setObject = function (object) {
+        obj = object;
+    };
+
+    this.setPosition = function (position) {
+        obj.position = position;
+    };
+
+    this.setDestinationObject = function (destinationObject) {
+        destObj = destinationObject;
+        destObj.geometry.computeBoundingSphere();
+    };
+
+    var signedSquare = function (x) {
+        var res = x*x;
+        if (x < 0) {
+            res *= -1;
         }
         return res;
     };
     
-    this.getBullet = function () {
-        if (this.bullets.length === 0) {
-            this.bullets.push(createBullet());
-        }
-        var res = this.bullets[this.bullets.length - 1];
-        this.bullets.pop();
-        return res;
+    this.calculateForce = function () {
+        force.set(destObj.position.x - obj.position.x,
+                  destObj.position.y - obj.position.y,
+                  destObj.position.z - obj.position.z)
+            .multiplyScalar(bulletAttractionCoef);
     };
 
-    var make3dBulletMesh = function () {
-        return new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial( {color: 0x0000ff} ));
+    this.applyForce = function () {
+        velocity.x += force.x * bulletDeltaT;
+        velocity.y += force.y * bulletDeltaT;
+        velocity.z += force.z * bulletDeltaT;
+    };
+
+    this.makeStep = function () {
+        obj.position.x += velocity.x;
+        obj.position.y += velocity.y;
+        obj.position.z += velocity.z;
+    };
+
+    this.hasArrived = function () {
+        var diff = Math.pow(obj.position.x - destObj.position.x, 2);
+        diff += Math.pow(obj.position.z - destObj.position.z, 2);
+        return diff < Math.pow(destObj.geometry.boundingSphere.radius, 2) + bulletEpsilon;
+    };
+
+    this.deactivate = function () {
+        destObj = obj;
+        obj.visible = false;
+        force.set(0, 0, 0);
+        velocity.set(0, 0, 0);
+    };
+
+    this.activate = function (position, color) {
+        obj.visible = true;
+        obj.position.set(position.x, position.y, position.z);
+        obj.material.color = color;
+        //velocity.x = 0.015 * (Math.random() - 0.5) * (position.x - destObj.position.x);
+        //velocity.z = 0.015 * (Math.random() - 0.5) * (position.z - destObj.position.z);
+        velocity.y = Math.random()/4;
+    };
+
+};
+
+var bulletPool = new function () {
+
+    var maxBulletsCnt = 100;
+    var bulletsCnt = 0;
+    var bullets = [];
+    var activeBullets = [];
+    var temporaryBucket = [];
+
+    this.makeBullet = function (nodeFrom, nodeTo) {
+        var bullet;
+        if (bullets.length === 0) {
+            if (bulletsCnt < maxBulletsCnt) {
+                bullets.push(new Bullet());
+                bulletsCnt += 1;
+            } else {
+                //////////////////////////////
+                return;
+            }
+        }
+        bullet = bullets.pop();
+        bullet.setObject( this.makeBulletSphere() );
+        bullet.setDestinationObject(nodeTo.obj);
+        bullet.activate(nodeFrom.obj.position, nodeFrom.obj.material.color);
+        activeBullets.push(bullet);
+        return bullet;
+    };
+
+    this.makeBulletSphere = function () {
+        var geometry = new THREE.SphereGeometry(6, 8, 8);
+        var material = new THREE.MeshBasicMaterial({color: 0xff0000});
+        var mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        return mesh;
+    };
+
+    this.animateBullets = function () {
+        var bullet, i, tmp;
+        temporaryBucket.length = 0;
+        for (i in activeBullets) {
+            bullet = activeBullets[i];
+            if (bullet.hasArrived()) {
+                bullet.deactivate();
+                bullets.push(bullet);
+            } else {
+                bullet.calculateForce();
+                bullet.applyForce();
+                bullet.makeStep();
+                temporaryBucket.push(bullet);
+            }
+        }
+        tmp = activeBullets;
+        activeBullets = temporaryBucket;
+        temporaryBucket = tmp;
+        console.log('activeBullets.length = ' + activeBullets.length);
     };
 
 };
@@ -263,7 +366,8 @@ animate();
 
 function init() {
     var msg = "Some english text here. Maybe we can do better... anyway, let's start with that for now!abab" +
-        "abcdefghijklmnopqrstuvwxyz".toLowerCase(), i;
+        "abcdefghijklmnopqrstuvwxyz".toLowerCase();
+    var i;
     for (i = 0; i < msg.length; i += 1) {
         graph.eatLetter(msg.charAt(i));
     }
@@ -272,8 +376,6 @@ function init() {
     document.body.appendChild(container);
 
     renderer = new THREE.WebGLRenderer();
-    renderer.shadowMapEnabled = true;
-    renderer.shadowMapSoft    = true;
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
@@ -282,11 +384,9 @@ function init() {
     var ambientLight = new THREE.AmbientLight(0x333333);
     scene.add(ambientLight);
 
-    var directionalLight = new THREE.DirectionalLight(0xffffff);
-    directionalLight.position.set(0.8, 1.5, 0.5).normalize();
-    directionalLight.castShadow = true;
-    directionalLight.shadowDarkness = 1;
-    scene.add(directionalLight);
+    var directionalLightRight = new THREE.DirectionalLight(0xffffff);
+    directionalLightRight.position.set(750, 900, 200).normalize();
+    scene.add(directionalLightRight);
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
     camera.position.x = 200;
@@ -294,19 +394,17 @@ function init() {
     camera.position.z = 500;
     scene.add(camera);
 
-    plane = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200, 240, 240), new THREE.MeshLambertMaterial({color: 0xdddddd}));
+    plane = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200, 200, 200), new THREE.MeshLambertMaterial({color: 0xdddddd}));
     plane.rotation.x = - 90 * Math.PI / 180;
     plane.position.y = -40;
-    plane.receiveShadow = true;
     scene.add(plane);
     
     var node;
     for (i in graph.nodes) {
         node = graph.nodes[i];
-        node.obj.castShadow = true;
         scene.add(node.obj);
     }
-    
+
 }
 
 function animate() {
