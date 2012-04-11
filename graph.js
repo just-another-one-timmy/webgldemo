@@ -10,18 +10,30 @@ var dampingCoef = 0.5;
 var cameraStepSize = 25;
 var maxIterations = 100, iterations = 0;
 
-document.onkeydown = function(event) {
+document.onkeydown = function (event) {
     switch (String.fromCharCode(event.which).toLowerCase()) {
-    case "a": camera.position.x -= cameraStepSize; break;
-    case "d": camera.position.x += cameraStepSize; break;
-    case "w": camera.position.z -= cameraStepSize; break;
-    case "s": camera.position.z += cameraStepSize; break;
-    case "f": camera.position.y -= cameraStepSize; break;
-    case "r": camera.position.y += cameraStepSize; break;
+    case "a":
+        camera.position.x -= cameraStepSize;
+        break;
+    case "d":
+        camera.position.x += cameraStepSize;
+        break;
+    case "w":
+        camera.position.z -= cameraStepSize;
+        break;
+    case "s":
+        camera.position.z += cameraStepSize;
+        break;
+    case "f":
+        camera.position.y -= cameraStepSize;
+        break;
+    case "r":
+        camera.position.y += cameraStepSize;
+        break;
     }
 }
 
-var graph = new function() {
+var graph = new function () {
     // for each letter stores it frequency in the text and 3d object to display
     this.nodes = [];
     // for each pair of letters stores it frequency in the text
@@ -31,7 +43,7 @@ var graph = new function() {
 
     this.animationPhase = 1;
     
-    this.getEdge = function(mark) {
+    this.getEdge = function (mark) {
         var i, edge;
         for (i in this.edges) {
             edge = this.edges[i];
@@ -41,7 +53,7 @@ var graph = new function() {
         }
     };
 
-    this.getNode = function(letter) {
+    this.getNode = function (letter) {
         var i, node;
         for (i in this.nodes) {
             node = this.nodes[i];
@@ -52,13 +64,13 @@ var graph = new function() {
         return undefined;
     };
 
-    this.createEdge = function(mark) {
+    this.createEdge = function (mark) {
         var edge = {mark: mark, freq: 0};
         this.edges.push(edge);
         return edge;
     };
 
-    this.makeMesh3d = function() {
+    this.makeMesh3d = function () {
         var geometry = new THREE.SphereGeometry(10, 32, 32),
         material = new THREE.MeshLambertMaterial({color: Math.random() * 0xffffff});
         geometry.dynamic = true;
@@ -69,7 +81,7 @@ var graph = new function() {
         return mesh;
     };
     
-    this.createNode = function(letter) {
+    this.createNode = function (letter) {
         var node = {mark: letter,
                     freq: 0,
                     obj: this.makeMesh3d(),
@@ -84,7 +96,7 @@ var graph = new function() {
                 this.dy = -this.dy;
             }
 
-        if (graph.animationPhase == 1) {
+        if (graph.animationPhase === 1) {
                 this.obj.position.x += this.velocity.x;
                 this.obj.position.z += this.velocity.z;
             }
@@ -95,7 +107,7 @@ var graph = new function() {
         return node;
     };
 
-    this.eatLetter = function(letter) {
+    this.eatLetter = function (letter) {
 	letter = letter.toLowerCase();
         if (!(letter >= 'a' && letter <= 'z')) {
             lastLetter = undefined;
@@ -122,7 +134,7 @@ var graph = new function() {
         lastLetter = letter;
     };
 
-    this.animateNodes = function() {
+    this.animateNodes = function () {
         for (var i in this.nodes) {
             this.nodes[i].animate();
         }
@@ -132,7 +144,7 @@ var graph = new function() {
         }
     };
 
-    this.computeForces = function() {
+    this.computeForces = function () {
         var i, j, ipos, jpos, dist, diff, attractionForce, repulsionForce;
         for (i in this.nodes) {
             for (j in this.nodes) {
@@ -148,7 +160,7 @@ var graph = new function() {
         }
     };
 
-    this.applyForces = function() {
+    this.applyForces = function () {
         var i, node;
         for (i in this.nodes) {
             node = this.nodes[i];
@@ -158,7 +170,7 @@ var graph = new function() {
         }
     };
 
-    this.calcAttractionForce = function(node1, node2) {
+    this.calcAttractionForce = function (node1, node2) {
         var frequency = 0,
         edge1 = this.getEdge(node1.mark+node2.mark),
         edge2 = this.getEdge(node2.mark+node1.mark),
@@ -173,7 +185,7 @@ var graph = new function() {
         return new THREE.Vector3(pos2.x - pos1.x, 0, pos2.z - pos1.z).multiplyScalar(attractionCoef).multiplyScalar(frequency);
     };
 
-    this.calcRepulsionForce = function(node1, node2) {
+    this.calcRepulsionForce = function (node1, node2) {
         var pos1 = node1.obj.position, pos2 = node2.obj.position;
         var sqdist = Math.pow(pos1.x - pos2.x, 2) + Math.pow(pos1.z - pos2.z, 2);
         return new THREE.Vector3(pos1.x - pos2.x, 0, pos1.z - pos2.z).
@@ -182,42 +194,42 @@ var graph = new function() {
             multiplyScalar(repulsionCoef);
     };
 
-    this.doPhase1Animation = function() {
+    this.doPhase1Animation = function () {
         graph.computeForces();
         graph.applyForces();
         graph.animateNodes();
     };
 
-    this.doPhase2Animation = function() {
+    this.doPhase2Animation = function () {
         graph.animateNodes();
     };
     
-    this.doAnimation = function(){
+    this.doAnimation = function (){
         var animationFunction = this.doPhase1Animation;
-        if (this.animationPhase == 2) {
+        if (this.animationPhase === 2) {
             animationFunction = this.doPhase2Animation;
         }
-        animationFunction();
+        animationFunction ();
     };
 };
 
-var bulletPool = new function() {
+var bulletPool = new function () {
     this.bulletCounter = 0;
     this.bullets = [];
 
-    var createBullet = function() {
+    var createBullet = function () {
         var res = {name: this.bulletCounter,
            obj: make3dBulletMesh()};
         this.bulletCounter += 1;
         //res.obj.visible = false;
         scene.add(res.obj);
-        res.setPosition = function(pos) {
+        res.setPosition = function (pos) {
             res.obj.position = pos;
         };
-        res.setDestination = function(dest) {
+        res.setDestination = function (dest) {
             res.destination = dest;
         }
-        res.makeStep = function() {
+        res.makeStep = function () {
             var diff = new THREE.Vector3(this.destination.x - this.obj.position.x,
                                          0,
                                          this.destination.z - this.obj.position.z).normalize().multiplyScalar(0.0005);
@@ -229,10 +241,10 @@ var bulletPool = new function() {
             }
         }
         return res;
-    }
+    };
     
-    this.getBullet = function() {
-        if (this.bullets.length == 0) {
+    this.getBullet = function () {
+        if (this.bullets.length === 0) {
             this.bullets.push(createBullet());
         }
         var res = this.bullets[this.bullets.length - 1];
@@ -240,7 +252,7 @@ var bulletPool = new function() {
         return res;
     };
 
-    var make3dBulletMesh = function() {
+    var make3dBulletMesh = function () {
         return new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial( {color: 0x0000ff} ));
     };
 
