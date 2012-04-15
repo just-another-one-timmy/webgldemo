@@ -12,29 +12,8 @@ var maxIterations = 150, iterations = 0;
 var bulletDeltaT = 0.0001;
 var bulletAttractionCoef = 15;
 var bulletEpsilon = 1.5;
-
-document.onkeydown = function (event) {
-    switch (String.fromCharCode(event.which).toLowerCase()) {
-    case "a":
-        camera.position.x -= cameraStepSize;
-        break;
-    case "d":
-        camera.position.x += cameraStepSize;
-        break;
-    case "w":
-        camera.position.z -= cameraStepSize;
-        break;
-    case "s":
-        camera.position.z += cameraStepSize;
-        break;
-    case "f":
-        camera.position.y -= cameraStepSize;
-        break;
-    case "r":
-        camera.position.y += cameraStepSize;
-        break;
-    }
-}
+var controls;
+var clock;
 
 var graph = new function () {
     // for each letter stores it frequency in the text and 3d object to display
@@ -111,7 +90,7 @@ var graph = new function () {
     };
 
     this.eatLetter = function (letter) {
-	letter = letter.toLowerCase();
+        letter = letter.toLowerCase();
         if (!(letter >= 'a' && letter <= 'z')) {
             lastLetter = undefined;
             return;
@@ -372,6 +351,8 @@ function init() {
         graph.eatLetter(msg.charAt(i));
     }
 
+    clock = new THREE.Clock();
+
     container = document.createElement('div');
     document.body.appendChild(container);
 
@@ -389,10 +370,15 @@ function init() {
     scene.add(directionalLightRight);
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
-    camera.position.x = 200;
-    camera.position.y = 400;
-    camera.position.z = 500;
+    camera.position.set(0, 0, 0);
     scene.add(camera);
+
+    controls = new THREE.FirstPersonControls(camera);
+    controls.movementSpeed = 70;
+    controls.lookSpeed = 0.05;
+    controls.noFly = true;
+
+    camera.lookAt(scene.position);
 
     plane = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200, 200, 200), new THREE.MeshLambertMaterial({color: 0xdddddd}));
     plane.rotation.x = - 90 * Math.PI / 180;
@@ -414,7 +400,10 @@ function animate() {
 
 function render() {
     graph.doAnimation();
-    camera.lookAt(scene.position);
     renderer.render(scene, camera);
+
+    var delta = clock.getDelta();
+
+    controls.update(delta);
 }
 
